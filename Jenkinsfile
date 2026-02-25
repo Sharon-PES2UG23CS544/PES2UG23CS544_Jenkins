@@ -1,47 +1,39 @@
 pipeline {
     agent any
+
     stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
         stage('Build Backend Image') {
             steps {
-                sh '''
-                docker rmi -f backend-app || true
-                docker build -t backend-app CC_LAB-6/backend
-                '''
+                // Remove old image if exists
+                sh 'docker rmi -f backend-app || true'
+
+                // Build Docker image using the backend folder
+                sh 'docker build -t backend-app -f Dockerfile backend'
             }
         }
+
         stage('Deploy Backend Containers') {
             steps {
-                sh '''
-                docker network create app-network || true
-                docker rm -f backend1 backend2 || true
-                docker run -d --name backend1 --network app-network backend-app
-                docker run -d --name backend2 --network app-network backend-app
-                '''
+                sh 'docker run -d --name backend-container -p 8080:8080 backend-app'
             }
         }
+
+        stage('Build NGINX Image') {
+            steps {
+                sh 'docker build -t nginx-lb nginx'
+            }
+        }
+
         stage('Deploy NGINX Load Balancer') {
             steps {
-                sh '''
-                docker rm -f nginx-lb || true
-                
-                docker run -d \
-                  --name nginx-lb \
-                  --network app-network \
-                  -p 80:80 \
-                  nginx
-                
-                docker cp CC_LAB-6/nginx/default.conf nginx-lb:/etc/nginx/conf.d/default.conf
-                docker exec nginx-lb nginx -s reload
-                '''
+                sh 'docker run -d --name nginx-container -p 80:80 nginx-lb'
             }
-        }
-    }
-    post {
-        success {
-            echo 'Pipeline executed successfully. NGINX load balancer is running.'
-        }
-        failure {
-            echo 'Pipeline failed. Check console logs for errors.'
         }
     }
 }
